@@ -36,6 +36,8 @@ struct dev_info {
 	int n_buffers;
 };
 
+static char dump_enable = 0;
+
 int init_mmap(struct dev_info * device)
 {
 	struct v4l2_requestbuffers req;
@@ -194,6 +196,25 @@ int init_video_device(struct dev_info *device)
 
 }
 
+int dump_frame(struct buffer *buffer)
+{
+	int ret,fd;
+
+	fd = open("dump_frame.yuv",O_RDWR);
+	if(fd < 0){
+		printf("dump_frame open failed\n");
+		return -1;
+	}
+
+	ret = write(fd,buffer->start,buffer->length);
+	if(ret < 0){
+		printf("dump_frame write failed\n");
+	}
+
+	close(fd);
+	return 0;
+}
+
 int read_frame(struct dev_info *device, void *buffer)
 {
 	struct v4l2_buffer buf; 
@@ -215,6 +236,12 @@ int read_frame(struct dev_info *device, void *buffer)
 	/* coping the frame data */
 	memcpy(buffer, device->buffers[buf.index].start,
 	       device->buffers[buf.index].length);
+
+	if(1 == dump_enable){
+		dump_frame(&device->buffers[buf.index]);
+		dump_enabe = 0;
+	}
+	
 
 	/* using IOCTL to enqueue back the buffer after we used it */
 	if (-1 == ioctl(device->fd, VIDIOC_QBUF, &buf)) {
@@ -318,6 +345,8 @@ void main()
 	/* capturing 500 frames (abouth 20 seconds) */
 	/* each frame data is copied to the YUV OVERLAY */
 	while (frames_count++ < 500) {	
+		if(frames_count == 450)
+			dump_enable = 1;
 #ifdef DISPLAY_SDL_ENABLE
 		SDL_LockYUVOverlay(data);
 #endif
