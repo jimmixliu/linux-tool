@@ -38,6 +38,119 @@ struct dev_info {
 
 static char dump_enable = 0;
 
+
+/*
+*enumerating  menu
+*/
+
+static void enumerate_menu(struct dev_info * device, struct v4l2_queryctrl queryctrl,struct v4l2_querymenu querymenu)
+{
+	printf(" Menu items:\n");
+
+	memset(&querymenu, 0, sizeof(querymenu));
+	querymenu.id = queryctrl.id;
+
+	for(querymenu.index = queryctrl.minimum; 
+            querymenu.index <= queryctrl.maximum;
+            querymenu.index++){
+		if(0 == ioctl(device->fd,VIDIOC_QUERYMENU,&querymenu)){
+			printf( "%s\n",querymenu.name);
+		}
+	}
+}
+
+
+/*
+*Enumerating all user controls
+*/
+int query_all_controls(struct dev_info * device)
+{
+	struct v4l2_queryctrl queryctrl;
+        struct v4l2_querymenu querymenu;
+
+	memset(&queryctrl, 0, sizeof(queryctrl));
+	memset(&querymenu, 0, sizeof(querymenu));
+
+	for(queryctrl.id = V4L2_CID_BASE;
+	    queryctrl.id < V4L2_CID_LASTP1;
+	    queryctrl.id++) {
+		if(0 == ioctl(device->fd, VIDIOC_QUERYCTRL, &queryctrl)) {
+			if(queryctrl.flags & V4L2_CTRL_FLAG_DISABLED)
+				continue;
+
+			printf("Contrl %s\n", queryctrl.name);
+
+			if(queryctrl.type == V4L2_CTRL_TYPE_MENU)
+				enumerate_menu(device,queryctrl,querymenu);
+		} else {
+			if (errno == EINVAL)
+				continue;
+
+			perror("VIDIOC_QUERYCTRL");
+			exit(EXIT_FAILURE);
+		}
+	}
+
+	for (queryctrl.id = V4L2_CID_PRIVATE_BASE;;queryctrl.id++) {
+		if (0 == ioctl(device->fd, VIDIOC_QUERYCTRL, &queryctrl)) {
+			if (queryctrl.flags & V4L2_CTRL_FLAG_DISABLED)
+				continue;
+
+			printf("Control %s\n", queryctrl.name);
+
+			if (queryctrl.type == V4L2_CTRL_TYPE_MENU)
+				enumerate_menu(device,queryctrl,querymenu);
+		} else {
+			if (errno == EINVAL)
+				break;
+
+			perror("VIDIOC_QUERYCTRL");
+			exit(EXIT_FAILURE);
+		}
+	}
+}
+
+/*
+* Changing controls
+*/
+
+static int change_controls(struct dev_info * device)
+{
+	struct v4l2_queryctrl queryctrl;
+	struct v4l2_control control;
+
+	memset(&queryctrl, 0, sizeof(queryctrl));
+	queryctrl.id = V4L2_CID_BRIGHTNESS;
+
+	if (-1 == ioctl(device->fd,VIDIOC_QUERYCTRL, &queryctrl)) {
+		if (errno != EINVAL) {
+			perror("VIDIOC_QUERYCTRL");
+			exit(EXIT_FAILURE);
+		} else {
+			printf("V4L2_CID_BRIGHTNESS is not supported\n");
+		}
+	} else if (queryctrl.flags & V4L2_CTRL_FLAG_DISABLED) {
+		printf("V4L2_CID_BRIGHTNESS is not supported ");
+	} else {
+		memset(&control, 0, sizeof(control));
+		control.id = V4L2_CID_BRIGHTNESS;
+		//control.value = queryctrl.default_value;
+		control.value = 0;
+
+		printf("id = %d, type = %d, name %s\n",queryctrl.id,queryctrl.type,queryctrl.name);
+		printf("minium = %d, maximum = %d\n",queryctrl.minimum,queryctrl.maximum);
+		printf("step = %d, default_vaue = %d\n",queryctrl.step,queryctrl.default_value);
+
+
+		if (-1 == ioctl(device->fd, VIDIOC_S_CTRL, &control)) {
+			perror("VIDIOC_S_CTRL");
+			exit(EXIT_FAILURE);
+		}
+	}
+}
+
+
+
 int init_mmap(struct dev_info * device)
 {
 	struct v4l2_requestbuffers req;
@@ -192,9 +305,19 @@ int init_video_device(struct dev_info *device)
 		printf("device dosen't suppprt MMAP\n");
 		return -1;
 	}
+
+   //     query_all_controls(device);
+      //  change_controls(device);
+
 	return 1;
 
 }
+
+static int exposure_control()
+{
+	
+}
+
 
 int dump_frame(struct buffer *buffer)
 {
@@ -239,7 +362,7 @@ int read_frame(struct dev_info *device, void *buffer)
 
 	if(1 == dump_enable){
 		dump_frame(&device->buffers[buf.index]);
-		dump_enabe = 0;
+		dump_enable = 0;
 	}
 	
 
